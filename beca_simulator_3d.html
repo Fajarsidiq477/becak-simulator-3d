@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Beca Simulator - Light Speed Pedicab</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            background-color: #0f172a;
+        }
+        .font-space {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        /* Glassmorphism UI elements */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        /* Pulsing & animations */
+        @keyframes pulse-glow {
+            0%, 100% { filter: drop-shadow(0 0 15px rgba(245, 158, 11, 0.8)); }
+            50% { filter: drop-shadow(0 0 30px rgba(245, 158, 11, 1)); }
+        }
+        .light-speed-glow {
+            animation: pulse-glow 1.5s infinite alternate;
+        }
+        /* Floating notification keyframes */
+        @keyframes float-up {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-80px) scale(1.2); }
+        }
+        .float-text {
+            animation: float-up 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        /* Speedometer Needle transition */
+        #speed-needle {
+            transition: transform 0.1s ease-out;
+            transform-origin: bottom center;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen text-white select-none">
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 w-full h-full z-0"></div>
+
+    <!-- UI Overlay Layer -->
+    <div id="ui-layer" class="relative z-10 inset-0 w-full h-full pointer-events-none flex flex-col justify-between p-4 md:p-6">
+        
+        <!-- TOP HUD HEADER -->
+        <div class="flex justify-between items-start gap-3 md:gap-4 pointer-events-auto flex-wrap md:flex-nowrap">
+            
+            <!-- Driver Profile & EXP -->
+            <div class="glass-panel rounded-2xl p-3 flex items-center gap-3 shadow-2xl min-w-[200px]">
+                <div class="w-11 h-11 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center text-slate-900 text-xl font-black shadow-lg">
+                    <i class="fa-solid fa-person-biking" id="profile-icon"></i>
+                </div>
+                <div class="flex-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold uppercase tracking-wider text-amber-400" id="driver-title">Novice Pedaler</span>
+                        <span class="text-xs font-bold text-slate-300">Lvl <span id="driver-level">1</span></span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full mt-1 overflow-hidden border border-slate-700">
+                        <div id="exp-bar" class="bg-gradient-to-r from-amber-500 to-yellow-300 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                    <div class="text-[9px] text-slate-400 text-right mt-0.5"><span id="current-exp">0</span>/<span id="max-exp">100</span> EXP</div>
+                </div>
+            </div>
+
+            <!-- Navigation Compass & Distance Indicator -->
+            <div id="navigation-hud" class="glass-panel rounded-2xl px-5 py-2 flex items-center gap-3 shadow-2xl transition-all duration-300">
+                <div id="compass-arrow" class="w-7 h-7 flex items-center justify-center text-amber-400 text-xl transform transition-transform duration-75">
+                    <i class="fa-solid fa-location-arrow"></i>
+                </div>
+                <div class="text-center">
+                    <div class="text-[9px] uppercase font-bold text-slate-400 tracking-wider" id="nav-status-label">NEXT PASSENGER</div>
+                    <div class="text-base font-space font-extrabold text-white" id="nav-distance">0 m</div>
+                </div>
+            </div>
+
+            <!-- TOP-RIGHT REPOSITIONED MISSION TIMER HUD (Non-blocking) -->
+            <div id="mission-hud" class="glass-panel rounded-2xl px-5 py-2 flex flex-col items-center shadow-2xl border-amber-500/40 transition-all duration-300">
+                <div class="flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span class="text-[10px] font-black tracking-widest text-emerald-400 uppercase" id="mission-status-text">IN PROGRESS</span>
+                </div>
+                <div class="flex items-center gap-3 my-0.5">
+                    <i class="fa-solid fa-stopwatch text-slate-300 text-base"></i>
+                    <div class="text-2xl font-space font-black text-white" id="timer-display">00:45</div>
+                    <div class="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" id="reward-estimate">+$150</div>
+                </div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div id="timer-bar" class="bg-emerald-400 h-full w-full transition-all duration-200"></div>
+                </div>
+            </div>
+
+            <!-- Currency, Map & Shop Buttons -->
+            <div class="flex items-center gap-2">
+                <div class="glass-panel rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 shadow-2xl">
+                    <i class="fa-solid fa-coins text-yellow-400 text-xl"></i>
+                    <div>
+                        <div class="text-[9px] uppercase font-bold text-slate-400 tracking-wider">GOLD</div>
+                        <div class="text-lg font-space font-black text-amber-300" id="gold-display">0</div>
+                    </div>
+                </div>
+                
+                <button id="map-btn" title="Open Map (M)" class="glass-panel hover:bg-slate-800/80 active:scale-95 transition-all text-emerald-400 rounded-2xl p-3 flex items-center justify-center shadow-2xl border border-emerald-500/30">
+                    <i class="fa-solid fa-map text-lg"></i>
+                </button>
+                <button id="shop-btn" title="Garage Shop" class="glass-panel hover:bg-slate-800/80 active:scale-95 transition-all text-amber-400 rounded-2xl p-3 flex items-center justify-center shadow-2xl border border-amber-500/30">
+                    <i class="fa-solid fa-store text-lg"></i>
+                </button>
+                <button id="bell-btn" title="Ring Bell" class="glass-panel hover:bg-slate-800/80 active:scale-95 transition-all text-yellow-400 rounded-2xl p-3 flex items-center justify-center shadow-2xl border border-yellow-500/30">
+                    <i class="fa-solid fa-bell text-lg"></i>
+                </button>
+                <button id="reset-btn" title="Reset to Road (R)" class="glass-panel hover:bg-slate-800/80 active:scale-95 transition-all text-cyan-400 rounded-2xl p-3 flex items-center justify-center shadow-2xl border border-cyan-500/30">
+                    <i class="fa-solid fa-arrows-rotate text-lg"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- BOTTOM HUD FOOTER -->
+        <div class="flex justify-between items-end gap-4 pointer-events-auto">
+            
+            <!-- Speedometer -->
+            <div class="glass-panel rounded-2xl p-4 flex items-center gap-4 shadow-2xl">
+                <div class="relative w-16 h-16 flex items-center justify-center">
+                    <div class="absolute inset-0 rounded-full border-4 border-slate-700 border-t-amber-400 border-r-amber-400 transform -rotate-45"></div>
+                    <div class="text-center">
+                        <div class="text-xl font-space font-black" id="speed-text">0</div>
+                        <div class="text-[9px] font-bold text-slate-400 uppercase tracking-tight">KM/H</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="text-xs font-bold text-slate-300" id="becak-model-label">Standard Becak</div>
+                    <div class="text-[11px] text-amber-400/80 font-semibold" id="mode-badge">Pedal Drive</div>
+                </div>
+                <!-- Nitro Gauge Bar -->
+                <div class="w-24 border-l border-slate-700/80 pl-3">
+                    <div class="flex justify-between items-center text-[10px] font-bold mb-1">
+                        <span class="text-orange-400 flex items-center gap-1"><i class="fa-solid fa-fire-flame-curved animate-pulse"></i> NITRO</span>
+                        <span class="text-slate-300" id="nitro-text">100%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-slate-700">
+                        <div id="nitro-bar" class="bg-gradient-to-r from-orange-500 to-amber-300 h-full w-full transition-all duration-75"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls Prompt / Hints -->
+            <div class="hidden lg:flex glass-panel rounded-xl px-4 py-2 text-xs text-slate-300 items-center gap-4">
+                <div><kbd class="px-2 py-1 bg-slate-800 rounded text-amber-400 font-bold border border-slate-700">W</kbd> / <kbd class="px-2 py-1 bg-slate-800 rounded text-amber-400 font-bold border border-slate-700">↑</kbd> Drive</div>
+                <div><kbd class="px-2 py-1 bg-slate-800 rounded text-amber-400 font-bold border border-slate-700">S</kbd> / <kbd class="px-2 py-1 bg-slate-800 rounded text-amber-400 font-bold border border-slate-700">↓</kbd> Reverse</div>
+                <div><kbd class="px-2 py-1 bg-slate-800 rounded text-amber-400 font-bold border border-slate-700">A</kbd> / <kbd class="px-2 py-1 bg-slate-800 rounded text-amber-400 font-bold border border-slate-700">D</kbd> Steer</div>
+                <div><kbd class="px-2 py-1 bg-slate-800 rounded text-orange-400 font-bold border border-slate-700">SHIFT</kbd> Nitro</div>
+                <div><kbd class="px-2 py-1 bg-slate-800 rounded text-emerald-400 font-bold border border-slate-700">M</kbd> Map</div>
+                <div><kbd class="px-2 py-1 bg-slate-800 rounded text-cyan-400 font-bold border border-slate-700">R</kbd> Unstuck</div>
+                <div><kbd class="px-2 py-1 bg-slate-800 rounded text-amber-400 font-bold border border-slate-700">SPACE</kbd> Brake</div>
+            </div>
+
+            <!-- Mini Map -->
+            <div class="glass-panel p-2 rounded-2xl shadow-2xl relative cursor-pointer hover:border-amber-500/50 transition-all" id="minimap-container">
+                <canvas id="minimap" width="120" height="120" class="rounded-xl bg-slate-900/90"></canvas>
+            </div>
+        </div>
+
+        <!-- ON-SCREEN VIRTUAL CONTROLS FOR TOUCH & MOUSE -->
+        <div id="virtual-controls" class="pointer-events-auto flex justify-between items-end w-full pt-3 gap-2">
+            <!-- Steering Controls -->
+            <div class="flex gap-2">
+                <button id="btn-left" class="w-14 h-14 md:w-16 md:h-16 rounded-2xl glass-panel active:bg-amber-500/40 text-amber-400 text-2xl flex items-center justify-center shadow-2xl border border-amber-500/30 select-none">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <button id="btn-right" class="w-14 h-14 md:w-16 md:h-16 rounded-2xl glass-panel active:bg-amber-500/40 text-amber-400 text-2xl flex items-center justify-center shadow-2xl border border-amber-500/30 select-none">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+
+            <!-- Drive & Brake Controls -->
+            <div class="flex gap-2 items-end">
+                <button id="btn-reverse" class="w-12 h-12 md:w-14 md:h-14 rounded-2xl glass-panel active:bg-rose-500/40 text-rose-400 text-xl flex items-center justify-center shadow-2xl border border-rose-500/30 select-none">
+                    <i class="fa-solid fa-arrow-down"></i>
+                </button>
+                <button id="btn-brake" class="w-12 h-12 md:w-14 md:h-14 rounded-2xl glass-panel active:bg-slate-500/40 text-slate-300 text-xs font-black flex items-center justify-center shadow-2xl border border-slate-500/30 select-none">
+                    STOP
+                </button>
+                <button id="btn-nitro" class="w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-tr from-orange-600 to-amber-400 active:scale-95 text-slate-950 text-xl flex items-center justify-center shadow-2xl border border-orange-300 select-none">
+                    <i class="fa-solid fa-fire-flame-curved"></i>
+                </button>
+                <button id="btn-drive" class="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 active:scale-95 text-slate-950 text-2xl md:text-3xl flex items-center justify-center shadow-2xl font-black border border-amber-300 select-none">
+                    <i class="fa-solid fa-angles-up"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FULL INTERACTIVE CITY MAP MODAL (KEY 'M') -->
+    <div id="map-modal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 md:p-6 hidden pointer-events-auto">
+        <div class="glass-panel w-full max-w-2xl rounded-3xl p-5 md:p-6 border border-emerald-500/40 shadow-2xl flex flex-col items-center">
+            
+            <!-- Modal Header -->
+            <div class="w-full flex justify-between items-center mb-4 border-b border-slate-700/60 pb-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl border border-emerald-500/30">
+                        <i class="fa-solid fa-map-location-dot"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-space font-black text-white">CITY NAVIGATION MAP</h2>
+                        <p class="text-xs text-slate-400">Press <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-emerald-400 border border-slate-700 font-bold">M</kbd> or <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-300 border border-slate-700 font-bold">ESC</kbd> to return</p>
+                    </div>
+                </div>
+                <button id="close-map" class="w-10 h-10 rounded-xl bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-all">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Canvas Viewport -->
+            <div class="relative w-full aspect-square max-w-[420px] bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden flex items-center justify-center shadow-inner">
+                <canvas id="full-map-canvas" width="420" height="420" class="w-full h-full object-contain"></canvas>
+            </div>
+
+            <!-- Legend Banner -->
+            <div class="w-full max-w-[420px] flex flex-wrap justify-between items-center gap-2 mt-4 text-xs text-slate-300 glass-card p-3 rounded-xl border border-slate-700/60">
+                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-amber-400 shadow-sm"></span> You (Becak)</div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span> Customer Pickup</div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-fuchsia-400 animate-pulse"></span> Destination</div>
+                <div class="flex items-center gap-2"><span class="w-3.5 h-3.5 rounded bg-slate-700 border border-slate-600"></span> Building</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- UPGRADE SHOP MODAL -->
+    <div id="shop-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden pointer-events-auto">
+        <div class="glass-panel w-full max-w-2xl rounded-3xl p-6 md:p-8 border border-amber-500/30 shadow-2xl max-h-[90vh] flex flex-col">
+            
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center mb-6 border-b border-slate-700/60 pb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl border border-amber-500/30">
+                        <i class="fa-solid fa-screwdriver-wrench"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-space font-black text-white">BECAK GARAGE</h2>
+                        <p class="text-xs text-slate-400">Upgrade your vehicle stats or unlock the Light Speed Becak</p>
+                    </div>
+                </div>
+                <button id="close-shop" class="w-10 h-10 rounded-xl bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-all">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Upgrades List -->
+            <div class="space-y-4 overflow-y-auto pr-1 flex-1">
+                
+                <!-- Speed Upgrade -->
+                <div class="glass-card p-4 rounded-2xl flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center text-2xl">
+                            <i class="fa-solid fa-gauge-high"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-white text-base">Top Speed</h3>
+                            <p class="text-xs text-slate-400">Increases maximum pedaling velocity</p>
+                            <div class="text-xs text-blue-400 font-semibold mt-1" id="speed-lvl-text">Level 1 (18 km/h)</div>
+                        </div>
+                    </div>
+                    <button id="buy-speed" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold text-sm transition-all flex items-center gap-2 shadow-lg">
+                        <i class="fa-solid fa-coins"></i> <span id="speed-cost">100</span>
+                    </button>
+                </div>
+
+                <!-- Acceleration Upgrade -->
+                <div class="glass-card p-4 rounded-2xl flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-2xl">
+                            <i class="fa-solid fa-bolt"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-white text-base">Pedal Acceleration</h3>
+                            <p class="text-xs text-slate-400">Reach top speed significantly faster</p>
+                            <div class="text-xs text-emerald-400 font-semibold mt-1" id="accel-lvl-text">Level 1</div>
+                        </div>
+                    </div>
+                    <button id="buy-accel" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold text-sm transition-all flex items-center gap-2 shadow-lg">
+                        <i class="fa-solid fa-coins"></i> <span id="accel-cost">150</span>
+                    </button>
+                </div>
+
+                <!-- Handling Upgrade -->
+                <div class="glass-card p-4 rounded-2xl flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center text-2xl">
+                            <i class="fa-solid fa-route"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-white text-base">Steering Handling</h3>
+                            <p class="text-xs text-slate-400">Sharper turning and response precision</p>
+                            <div class="text-xs text-purple-400 font-semibold mt-1" id="handling-lvl-text">Level 1</div>
+                        </div>
+                    </div>
+                    <button id="buy-handling" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold text-sm transition-all flex items-center gap-2 shadow-lg">
+                        <i class="fa-solid fa-coins"></i> <span id="handling-cost">120</span>
+                    </button>
+                </div>
+
+                <!-- Tip Bonus Upgrade -->
+                <div class="glass-card p-4 rounded-2xl flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-yellow-500/20 text-yellow-400 flex items-center justify-center text-2xl">
+                            <i class="fa-solid fa-hand-holding-dollar"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-white text-base">Tip Collector</h3>
+                            <p class="text-xs text-slate-400">Earn extra gold bonus upon fast delivery</p>
+                            <div class="text-xs text-yellow-400 font-semibold mt-1" id="tip-lvl-text">Level 1 (+0% Bonus)</div>
+                        </div>
+                    </div>
+                    <button id="buy-tip" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-extrabold text-sm transition-all flex items-center gap-2 shadow-lg">
+                        <i class="fa-solid fa-coins"></i> <span id="tip-cost">200</span>
+                    </button>
+                </div>
+
+                <!-- ULTIMATE LIGHT SPEED BECAK UPGRADE -->
+                <div class="p-5 rounded-2xl bg-gradient-to-r from-amber-900/40 via-purple-900/40 to-cyan-900/40 border-2 border-cyan-400/60 flex items-center justify-between gap-4 light-speed-glow">
+                    <div class="flex items-center gap-4">
+                        <div class="w-14 h-14 rounded-2xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-3xl border border-cyan-400/40 shadow-inner">
+                            <i class="fa-solid fa-rocket"></i>
+                        </div>
+                        <div>
+                            <div class="inline-block px-2 py-0.5 rounded bg-cyan-500/30 text-cyan-300 text-[10px] font-black uppercase tracking-wider mb-1">ULTIMATE EDITION</div>
+                            <h3 class="font-space font-black text-cyan-200 text-lg">Becak Laju Cahaya</h3>
+                            <p class="text-xs text-slate-300">Light-Speed Hyperdrive! Neon trail, 150 km/h top speed & warp SFX.</p>
+                        </div>
+                    </div>
+                    <button id="buy-light-speed" class="px-6 py-3 rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-black text-sm transition-all flex items-center gap-2 shadow-xl border border-cyan-200">
+                        <i class="fa-solid fa-coins"></i> <span id="light-speed-cost">1000</span>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Float Area -->
+    <div id="notification-container" class="pointer-events-none fixed inset-0 z-40 flex flex-col items-center justify-center space-y-2"></div>
+
+    <!-- MAIN GAME SCRIPT -->
+    <script>
+        // ==========================================
+        // 1. GAME AUDIO ENGINE (Web Audio API)
+        // ==========================================
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            // Kring kring pedal bell sound
+            playBell() {
+                this.init();
+                if (!this.ctx) return;
+
+                const playChime = (freq, time) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + time);
+                    gain.gain.setValueAtTime(0.3, this.ctx.currentTime + time);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + time + 0.3);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + time);
+                    osc.stop(this.ctx.currentTime + time + 0.35);
+                };
+
+                playChime(1500, 0);
+                playChime(1800, 0.12);
+            }
+
+            // Cash register coin sound
+            playCoin() {
+                this.init();
+                if (!this.ctx) return;
+                
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(987.77, now); // B5
+                osc.frequency.setValueAtTime(1318.51, now + 0.08); // E6
+
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.45);
+            }
+
+            // Mission Failure Sound
+            playFail() {
+                this.init();
+                if (!this.ctx) return;
+
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(120, now + 0.5);
+
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.55);
+            }
+
+            // Level Up Fanfare
+            playLevelUp() {
+                this.init();
+                if (!this.ctx) return;
+
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C E G C
+                notes.forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    const time = this.ctx.currentTime + i * 0.1;
+
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, time);
+                    gain.gain.setValueAtTime(0.25, time);
+                    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(time);
+                    osc.stop(time + 0.3);
+                });
+            }
+
+            // Light Speed Warp Audio Effect
+            playWarp() {
+                this.init();
+                if (!this.ctx) return;
+
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(1600, now + 0.8);
+
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.9);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.95);
+            }
+
+            // Nitro Rocket Boost Audio Effect
+            playNitro() {
+                this.init();
+                if (!this.ctx) return;
+
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(140, now);
+                osc.frequency.exponentialRampToValueAtTime(420, now + 0.25);
+
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        const audio = new SoundEngine();
+
+        // ==========================================
+        // 2. STATE & GAME DATA
+        // ==========================================
+        const gameState = {
+            gold: 0,
+            exp: 0,
+            level: 1,
+            maxExp: 100,
+            title: "Novice Pedaler",
+            nitro: {
+                amount: 100,
+                maxAmount: 100,
+                rechargeRate: 15,
+                consumeRate: 40,
+                isBoosting: false,
+                multiplier: 1.85
+            },
+            stats: {
+                topSpeedLvl: 1,
+                accelLvl: 1,
+                handlingLvl: 1,
+                tipLvl: 1,
+                isLightSpeed: false
+            },
+            costs: {
+                speed: 100,
+                accel: 150,
+                handling: 120,
+                tip: 200,
+                lightSpeed: 1000
+            },
+            // Vehicle physics parameters
+            physics: {
+                speed: 0,
+                maxSpeed: 18, // base max speed
+                accel: 12,    // acceleration rate
+                decel: 8,     // friction rate
+                steering: 1.8, // turn speed
+                reverseMax: -6
+            },
+            mission: {
+                active: false,
+                type: 'PICKUP', // 'PICKUP' or 'DROPOFF'
+                pickupPos: new THREE.Vector3(),
+                dropoffPos: new THREE.Vector3(),
+                targetPos: new THREE.Vector3(),
+                timer: 0,
+                maxTimer: 45,
+                reward: 100
+            }
+        };
+
+        const TITLES = [
+            "Novice Pedaler",
+            "City Cruiser",
+            "Master Pedaler",
+            "Speed Demon",
+            "God of Light Speed"
+        ];
+
+        // Controls input state
+        const keys = { W: false, A: false, S: false, D: false, Space: false, Shift: false };
+
+        // Mobile / Mouse touch controls state
+        const touchInput = { accel: false, reverse: false, brake: false, left: false, right: false, nitro: false };
+
+        // ==========================================
+        // 3. THREE.JS SCENE SETUP & ENVIRONMENT
+        // ==========================================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0f172a);
+        scene.fog = new THREE.FogExp2(0x0f172a, 0.008);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfff5ea, 1.2);
+        sunLight.position.set(50, 80, 40);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 250;
+        const d = 100;
+        sunLight.shadow.camera.left = -d;
+        sunLight.shadow.camera.right = d;
+        sunLight.shadow.camera.top = d;
+        sunLight.shadow.camera.bottom = -d;
+        scene.add(sunLight);
+
+        // Hemisphere light for colorful city ambient shadows
+        const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x1e293b, 0.4);
+        scene.add(hemiLight);
+
+        // Ground World Grid & City Layout
+        const CITY_SIZE = 300;
+        const BLOCK_SIZE = 40;
+        const ROAD_WIDTH = 14;
+        const buildings = []; // bounding boxes for light collision checking
+
+        // Ground Plane
+        const groundGeo = new THREE.PlaneGeometry(CITY_SIZE, CITY_SIZE);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Build Low-Poly Procedural City Infrastructure
+        function buildCity() {
+            const buildingColors = [0xef4444, 0x3b82f6, 0x10b981, 0xf59e0b, 0x8b5cf6, 0xec4899];
+            
+            const cityGroup = new THREE.Group();
+
+            for (let bx = -2; bx <= 2; bx++) {
+                for (let bz = -2; bz <= 2; bz++) {
+                    const blockCenterX = bx * (BLOCK_SIZE + ROAD_WIDTH);
+                    const blockCenterZ = bz * (BLOCK_SIZE + ROAD_WIDTH);
+
+                    // Create Sidewalk Mesh
+                    const sidewalkGeo = new THREE.BoxGeometry(BLOCK_SIZE, 0.3, BLOCK_SIZE);
+                    const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.6 });
+                    const sidewalk = new THREE.Mesh(sidewalkGeo, sidewalkMat);
+                    sidewalk.position.set(blockCenterX, 0.15, blockCenterZ);
+                    sidewalk.receiveShadow = true;
+                    cityGroup.add(sidewalk);
+
+                    // Add Buildings inside block
+                    const subDivs = 2;
+                    const subSize = (BLOCK_SIZE - 4) / subDivs;
+                    for (let sx = 0; sx < subDivs; sx++) {
+                        for (let sz = 0; sz < subDivs; sz++) {
+                            if (Math.random() < 0.15) continue;
+
+                            const height = 12 + Math.random() * 25;
+                            const color = buildingColors[Math.floor(Math.random() * buildingColors.length)];
+
+                            const posX = blockCenterX - (BLOCK_SIZE / 2) + 2 + subSize / 2 + sx * subSize;
+                            const posZ = blockCenterZ - (BLOCK_SIZE / 2) + 2 + subSize / 2 + sz * subSize;
+
+                            const bGeo = new THREE.BoxGeometry(subSize - 1, height, subSize - 1);
+                            const bMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.5 });
+                            const bMesh = new THREE.Mesh(bGeo, bMat);
+                            bMesh.position.set(posX, height / 2 + 0.3, posZ);
+                            bMesh.castShadow = true;
+                            bMesh.receiveShadow = true;
+                            cityGroup.add(bMesh);
+
+                            // Roof decoration
+                            const roofGeo = new THREE.BoxGeometry(subSize - 3, 1.5, subSize - 3);
+                            const roofMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
+                            const roof = new THREE.Mesh(roofGeo, roofMat);
+                            roof.position.set(posX, height + 0.3 + 0.75, posZ);
+                            cityGroup.add(roof);
+
+                            // Bounding box for collision
+                            buildings.push(new THREE.Box3().setFromObject(bMesh));
+                        }
+                    }
+
+                    // Trees on sidewalk corners
+                    const treePositions = [
+                        [blockCenterX - BLOCK_SIZE / 2 + 1.5, blockCenterZ - BLOCK_SIZE / 2 + 1.5],
+                        [blockCenterX + BLOCK_SIZE / 2 - 1.5, blockCenterZ - BLOCK_SIZE / 2 + 1.5],
+                        [blockCenterX - BLOCK_SIZE / 2 + 1.5, blockCenterZ + BLOCK_SIZE / 2 - 1.5],
+                        [blockCenterX + BLOCK_SIZE / 2 - 1.5, blockCenterZ + BLOCK_SIZE / 2 - 1.5]
+                    ];
+
+                    treePositions.forEach(([tx, tz]) => {
+                        const trunkGeo = new THREE.CylinderGeometry(0.3, 0.4, 2.5, 6);
+                        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+                        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                        trunk.position.set(tx, 1.4, tz);
+                        trunk.castShadow = true;
+
+                        const foliageGeo = new THREE.ConeGeometry(1.8, 4, 6);
+                        const foliageMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 });
+                        const foliage = new THREE.Mesh(foliageGeo, foliageMat);
+                        foliage.position.set(tx, 4, tz);
+                        foliage.castShadow = true;
+
+                        cityGroup.add(trunk);
+                        cityGroup.add(foliage);
+                    });
+                }
+            }
+
+            scene.add(cityGroup);
+        }
+        buildCity();
+
+        // Outer boundary walls to contain player within city
+        const wallSize = CITY_SIZE - 10;
+        const boundaries = [
+            new THREE.Box3(new THREE.Vector3(-wallSize/2 - 5, 0, -wallSize/2), new THREE.Vector3(-wallSize/2, 20, wallSize/2)),
+            new THREE.Box3(new THREE.Vector3(wallSize/2, 0, -wallSize/2), new THREE.Vector3(wallSize/2 + 5, 20, wallSize/2)),
+            new THREE.Box3(new THREE.Vector3(-wallSize/2, 0, -wallSize/2 - 5), new THREE.Vector3(wallSize/2, 20, -wallSize/2)),
+            new THREE.Box3(new THREE.Vector3(-wallSize/2, 0, wallSize/2), new THREE.Vector3(wallSize/2, 20, wallSize/2 + 5))
+        ];
+
+        // ==========================================
+        // 4. PROCEDURAL 3D BECAK VEHICLE MODEL
+        // ==========================================
+        let becakGroup, driverMesh, passengerMesh;
+        let wheelFL, wheelFR, wheelRear;
+        let neonStrips = [];
+
+        function createBecakModel() {
+            becakGroup = new THREE.Group();
+
+            // Materials
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.7, roughness: 0.3 });
+            const cabinMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.4 });
+            const seatMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.7 });
+            const canopyMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 });
+            const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+
+            // 1. Front Passenger Cabin Frame
+            const cabinGeo = new THREE.BoxGeometry(1.4, 0.4, 1.2);
+            const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+            cabin.position.set(0, 0.5, 0.6);
+            cabin.castShadow = true;
+            becakGroup.add(cabin);
+
+            // Cabin Backrest & Armrests
+            const backrestGeo = new THREE.BoxGeometry(1.4, 0.8, 0.15);
+            const backrest = new THREE.Mesh(backrestGeo, cabinMat);
+            backrest.position.set(0, 1.0, 0.05);
+            backrest.castShadow = true;
+            becakGroup.add(backrest);
+
+            // Seat Cushion
+            const cushionGeo = new THREE.BoxGeometry(1.3, 0.2, 0.9);
+            const cushion = new THREE.Mesh(cushionGeo, seatMat);
+            cushion.position.set(0, 0.75, 0.65);
+            becakGroup.add(cushion);
+
+            // Canopy Roof Supports
+            const poleGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.3);
+            const polePositions = [[-0.65, 1.3, 0.1], [0.65, 1.3, 0.1], [-0.65, 1.3, 1.1], [0.65, 1.3, 1.1]];
+            polePositions.forEach(([px, py, pz]) => {
+                const pole = new THREE.Mesh(poleGeo, chromeMat);
+                pole.position.set(px, py, pz);
+                becakGroup.add(pole);
+            });
+
+            // Canopy Awning Roof
+            const canopyGeo = new THREE.BoxGeometry(1.5, 0.1, 1.3);
+            const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+            canopy.position.set(0, 1.95, 0.6);
+            canopy.castShadow = true;
+            becakGroup.add(canopy);
+
+            // Front Mudguards
+            const guardGeo = new THREE.BoxGeometry(0.15, 0.5, 0.9);
+            const guardL = new THREE.Mesh(guardGeo, cabinMat);
+            guardL.position.set(-0.8, 0.7, 0.6);
+            const guardR = guardL.clone();
+            guardR.position.set(0.8, 0.7, 0.6);
+            becakGroup.add(guardL);
+            becakGroup.add(guardR);
+
+            // 2. Front Wheels
+            const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.1, 16);
+            wheelGeo.rotateZ(Math.PI / 2);
+
+            wheelFL = new THREE.Mesh(wheelGeo, wheelMat);
+            wheelFL.position.set(-0.85, 0.45, 0.6);
+            wheelFL.castShadow = true;
+            becakGroup.add(wheelFL);
+
+            wheelFR = new THREE.Mesh(wheelGeo, wheelMat);
+            wheelFR.position.set(0.85, 0.45, 0.6);
+            wheelFR.castShadow = true;
+            becakGroup.add(wheelFR);
+
+            // 3. Rear Bicycle Frame & Driver Seat
+            const bikeFrameGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.8);
+            bikeFrameGeo.rotateX(Math.PI / 2);
+            const bikeFrame = new THREE.Mesh(bikeFrameGeo, frameMat);
+            bikeFrame.position.set(0, 0.6, -0.6);
+            becakGroup.add(bikeFrame);
+
+            // Rear Saddle Seat
+            const saddleGeo = new THREE.BoxGeometry(0.35, 0.1, 0.35);
+            const saddle = new THREE.Mesh(saddleGeo, seatMat);
+            saddle.position.set(0, 1.15, -0.8);
+            becakGroup.add(saddle);
+
+            // Rear Handlebars
+            const handleGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.0);
+            handleGeo.rotateZ(Math.PI / 2);
+            const handle = new THREE.Mesh(handleGeo, chromeMat);
+            handle.position.set(0, 1.35, -0.3);
+            becakGroup.add(handle);
+
+            // Rear Wheel
+            wheelRear = new THREE.Mesh(wheelGeo, wheelMat);
+            wheelRear.position.set(0, 0.45, -1.3);
+            wheelRear.castShadow = true;
+            becakGroup.add(wheelRear);
+
+            // 4. Low-Poly Driver Character
+            const driverGroup = new THREE.Group();
+            const shirtMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xd97706 });
+            const hatMat = new THREE.MeshStandardMaterial({ color: 0xb45309 });
+
+            const bodyGeo = new THREE.BoxGeometry(0.45, 0.6, 0.3);
+            const body = new THREE.Mesh(bodyGeo, shirtMat);
+            body.position.set(0, 1.55, -0.8);
+            driverGroup.add(body);
+
+            const headGeo = new THREE.SphereGeometry(0.18, 8, 8);
+            const head = new THREE.Mesh(headGeo, skinMat);
+            head.position.set(0, 1.95, -0.8);
+            driverGroup.add(head);
+
+            const hatGeo = new THREE.ConeGeometry(0.45, 0.2, 8);
+            const hat = new THREE.Mesh(hatGeo, hatMat);
+            hat.position.set(0, 2.1, -0.8);
+            driverGroup.add(hat);
+
+            const armGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.6);
+            armGeo.rotateX(Math.PI / 4);
+
+            const armL = new THREE.Mesh(armGeo, shirtMat);
+            armL.position.set(-0.25, 1.5, -0.55);
+            driverGroup.add(armL);
+
+            const armR = armL.clone();
+            armR.position.set(0.25, 1.5, -0.55);
+            driverGroup.add(armR);
+
+            becakGroup.add(driverGroup);
+            driverMesh = driverGroup;
+
+            // 5. Low-Poly Passenger Character
+            const passengerGroup = new THREE.Group();
+            const passShirtMat = new THREE.MeshStandardMaterial({ color: 0xec4899 });
+            
+            const passBody = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.55, 0.3), passShirtMat);
+            passBody.position.set(0, 1.05, 0.65);
+            passengerGroup.add(passBody);
+
+            const passHead = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), skinMat);
+            passHead.position.set(0, 1.45, 0.65);
+            passengerGroup.add(passHead);
+
+            passengerGroup.visible = false;
+            becakGroup.add(passengerGroup);
+            passengerMesh = passengerGroup;
+
+            // 6. Light Speed Neon Tubes
+            const neonMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4 });
+            const neonGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.6);
+            neonGeo.rotateX(Math.PI / 2);
+
+            const neonL = new THREE.Mesh(neonGeo, neonMat);
+            neonL.position.set(-0.75, 0.3, 0);
+            neonL.visible = false;
+
+            const neonR = neonL.clone();
+            neonR.position.set(0.75, 0.3, 0);
+            neonR.visible = false;
+
+            becakGroup.add(neonL);
+            becakGroup.add(neonR);
+            neonStrips = [neonL, neonR];
+
+            // Set initial spawn position safely in the middle of a road intersection (X: 27, Z: 27)
+            becakGroup.position.set(27, 0, 27);
+            scene.add(becakGroup);
+        }
+        createBecakModel();
+
+        // Dynamic Light Speed Trail Particles
+        const trailParticles = [];
+        const trailGeo = new THREE.SphereGeometry(0.1, 4, 4);
+        const trailMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.8 });
+
+        function spawnWarpParticle() {
+            if (!gameState.stats.isLightSpeed || Math.abs(gameState.physics.speed) < 5) return;
+            
+            const p = new THREE.Mesh(trailGeo, trailMat.clone());
+            const offset = new THREE.Vector3((Math.random() - 0.5) * 1.2, 0.3 + Math.random() * 0.8, -1.2);
+            offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), becakGroup.rotation.y);
+            
+            p.position.copy(becakGroup.position).add(offset);
+            scene.add(p);
+            trailParticles.push({ mesh: p, life: 1.0 });
+        }
+
+        // ==========================================
+        // 5. MISSION ZONES & CYLINDER MARKERS
+        // ==========================================
+        const pickupZoneGroup = new THREE.Group();
+        const dropoffZoneGroup = new THREE.Group();
+
+        // Pickup Ring
+        const ringGeo = new THREE.CylinderGeometry(2.5, 2.5, 0.2, 32);
+        const pickupMat = new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.6 });
+        const pickupMesh = new THREE.Mesh(ringGeo, pickupMat);
+        pickupZoneGroup.add(pickupMesh);
+
+        const beaconGeo = new THREE.OctahedronGeometry(0.8);
+        const beaconMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 0.5 });
+        const beaconMesh = new THREE.Mesh(beaconGeo, beaconMat);
+        beaconMesh.position.y = 2.5;
+        pickupZoneGroup.add(beaconMesh);
+        scene.add(pickupZoneGroup);
+
+        // Dropoff Ring
+        const dropMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.6 });
+        const dropMesh = new THREE.Mesh(ringGeo, dropMat);
+        dropoffZoneGroup.add(dropMesh);
+
+        const dropBeaconGeo = new THREE.OctahedronGeometry(0.8);
+        const dropBeaconMat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, emissive: 0x06b6d4, emissiveIntensity: 0.5 });
+        const dropBeaconMesh = new THREE.Mesh(dropBeaconGeo, dropBeaconMat);
+        dropBeaconMesh.position.y = 2.5;
+        dropoffZoneGroup.add(dropBeaconMesh);
+        scene.add(dropoffZoneGroup);
+        dropoffZoneGroup.visible = false;
+
+        function getRandomRoadPosition() {
+            // Road centers in world space between blocks
+            const validCoords = [-81, -27, 27, 81];
+            const x = validCoords[Math.floor(Math.random() * validCoords.length)];
+            const z = validCoords[Math.floor(Math.random() * validCoords.length)];
+            return new THREE.Vector3(x, 0.1, z);
+        }
+
+        function resetPlayerToRoad() {
+            becakGroup.position.set(27, 0, 27);
+            becakGroup.rotation.y = 0;
+            gameState.physics.speed = 0;
+            showFloatingText("Reset to Road Center 🚗", "text-cyan-300 font-bold");
+        }
+
+        function startNewMission() {
+            const pPos = getRandomRoadPosition();
+            let dPos = getRandomRoadPosition();
+            while (dPos.distanceTo(pPos) < 50) {
+                dPos = getRandomRoadPosition();
+            }
+
+            gameState.mission.pickupPos.copy(pPos);
+            gameState.mission.dropoffPos.copy(dPos);
+            gameState.mission.targetPos.copy(pPos);
+            
+            const dist = pPos.distanceTo(dPos);
+            gameState.mission.maxTimer = Math.max(25, Math.floor(dist / 2.5));
+            gameState.mission.timer = gameState.mission.maxTimer;
+            gameState.mission.reward = Math.floor(dist * 1.5 + 40);
+
+            gameState.mission.type = 'PICKUP';
+            gameState.mission.active = true;
+
+            pickupZoneGroup.position.copy(pPos);
+            pickupZoneGroup.visible = true;
+
+            dropoffZoneGroup.position.copy(dPos);
+            dropoffZoneGroup.visible = false;
+
+            passengerMesh.visible = false;
+
+            document.getElementById('nav-status-label').innerText = "PICKUP PASSENGER";
+            document.getElementById('mission-status-text').innerText = "DRIVE TO YELLOW ZONE";
+            document.getElementById('mission-status-text').className = "text-xs font-black tracking-widest text-amber-400 uppercase";
+            document.getElementById('reward-estimate').innerText = `+$${gameState.mission.reward}`;
+            document.getElementById('mission-hud').classList.remove('opacity-0');
+        }
+
+        startNewMission();
+
+        // ==========================================
+        // 6. MAP MODAL & KEYBOARD HANDLERS
+        // ==========================================
+        let isMapOpen = false;
+        const mapModal = document.getElementById('map-modal');
+        const fullMapCanvas = document.getElementById('full-map-canvas');
+        const fullMapCtx = fullMapCanvas.getContext('2d');
+
+        function toggleMapModal() {
+            isMapOpen = !isMapOpen;
+            if (isMapOpen) {
+                mapModal.classList.remove('hidden');
+                drawFullMap();
+            } else {
+                mapModal.classList.add('hidden');
+            }
+        }
+
+        document.getElementById('map-btn').addEventListener('click', toggleMapModal);
+        document.getElementById('close-map').addEventListener('click', toggleMapModal);
+        document.getElementById('minimap-container').addEventListener('click', toggleMapModal);
+
+        // Click window auto-focus
+        window.addEventListener('click', () => window.focus());
+
+        window.addEventListener('keydown', (e) => {
+            const k = e.key ? e.key.toLowerCase() : '';
+            if (e.code === 'KeyW' || e.code === 'ArrowUp' || k === 'w') keys.W = true;
+            if (e.code === 'KeyS' || e.code === 'ArrowDown' || k === 's') keys.S = true;
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft' || k === 'a') keys.A = true;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight' || k === 'd') keys.D = true;
+            if (e.code === 'Space' || e.key === ' ') keys.Space = true;
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.key === 'Shift' || k === 'shift') keys.Shift = true;
+            if ((e.code === 'KeyM' || k === 'm') && !e.repeat) toggleMapModal();
+            if ((e.code === 'KeyR' || k === 'r') && !e.repeat) resetPlayerToRoad();
+            if (e.code === 'Escape' && isMapOpen) toggleMapModal();
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const k = e.key ? e.key.toLowerCase() : '';
+            if (e.code === 'KeyW' || e.code === 'ArrowUp' || k === 'w') keys.W = false;
+            if (e.code === 'KeyS' || e.code === 'ArrowDown' || k === 's') keys.S = false;
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft' || k === 'a') keys.A = false;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight' || k === 'd') keys.D = false;
+            if (e.code === 'Space' || e.key === ' ') keys.Space = false;
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.key === 'Shift' || k === 'shift') keys.Shift = false;
+        });
+
+        // Helper to bind touch and mouse events to virtual control buttons
+        function bindTouchButton(elementId, property) {
+            const btn = document.getElementById(elementId);
+            if (!btn) return;
+
+            const handleStart = (e) => {
+                if (e.cancelable) e.preventDefault();
+                touchInput[property] = true;
+            };
+
+            const handleEnd = (e) => {
+                if (e.cancelable) e.preventDefault();
+                touchInput[property] = false;
+            };
+
+            btn.addEventListener('touchstart', handleStart, { passive: false });
+            btn.addEventListener('touchend', handleEnd, { passive: false });
+            btn.addEventListener('touchcancel', handleEnd, { passive: false });
+            btn.addEventListener('mousedown', handleStart);
+            btn.addEventListener('mouseup', handleEnd);
+            btn.addEventListener('mouseleave', handleEnd);
+        }
+
+        // Bind virtual touch/click buttons
+        bindTouchButton('btn-drive', 'accel');
+        bindTouchButton('btn-reverse', 'reverse');
+        bindTouchButton('btn-brake', 'brake');
+        bindTouchButton('btn-nitro', 'nitro');
+        bindTouchButton('btn-left', 'left');
+        bindTouchButton('btn-right', 'right');
+
+        // Shop Modal Open/Close Handlers
+        document.getElementById('shop-btn').addEventListener('click', () => {
+            document.getElementById('shop-modal').classList.remove('hidden');
+        });
+        document.getElementById('close-shop').addEventListener('click', () => {
+            document.getElementById('shop-modal').classList.add('hidden');
+        });
+
+        // Ring Bell Button Action
+        document.getElementById('bell-btn').addEventListener('click', () => {
+            audio.playBell();
+            showFloatingText("Kring Kring! 🔔", "text-amber-300");
+        });
+
+        // Reset Unstuck Button Action
+        document.getElementById('reset-btn').addEventListener('click', resetPlayerToRoad);
+
+        // Dynamic Nitro Exhaust Flame Particles
+        const nitroParticles = [];
+        const nitroFlameGeo = new THREE.SphereGeometry(0.18, 6, 6);
+
+        function spawnNitroParticle() {
+            const isFlameCyan = gameState.stats.isLightSpeed;
+            const colorHex = isFlameCyan ? (Math.random() > 0.5 ? 0x06b6d4 : 0x38bdf8) : (Math.random() > 0.5 ? 0xff4500 : 0xffa500);
+            
+            const pMat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.95 });
+            const p = new THREE.Mesh(nitroFlameGeo, pMat);
+            
+            const offset = new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.45 + (Math.random() - 0.5) * 0.2, -1.35);
+            offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), becakGroup.rotation.y);
+            
+            p.position.copy(becakGroup.position).add(offset);
+            scene.add(p);
+            
+            const backVelocity = new THREE.Vector3((Math.random() - 0.5) * 1.5, 0.5 + Math.random(), -6).applyAxisAngle(new THREE.Vector3(0, 1, 0), becakGroup.rotation.y);
+            nitroParticles.push({ mesh: p, life: 1.0, vel: backVelocity });
+        }
+
+        document.getElementById('buy-speed').addEventListener('click', () => {
+            if (gameState.gold >= gameState.costs.speed) {
+                gameState.gold -= gameState.costs.speed;
+                gameState.stats.topSpeedLvl++;
+                gameState.physics.maxSpeed += 3;
+                gameState.costs.speed = Math.floor(gameState.costs.speed * 1.5);
+                audio.playCoin();
+                showFloatingText("Top Speed Upgraded! 🚀", "text-blue-400");
+                updateShopUI();
+            } else {
+                showFloatingText("Not enough gold!", "text-rose-400");
+            }
+        });
+
+        document.getElementById('buy-accel').addEventListener('click', () => {
+            if (gameState.gold >= gameState.costs.accel) {
+                gameState.gold -= gameState.costs.accel;
+                gameState.stats.accelLvl++;
+                gameState.physics.accel += 4;
+                gameState.costs.accel = Math.floor(gameState.costs.accel * 1.5);
+                audio.playCoin();
+                showFloatingText("Acceleration Upgraded! ⚡", "text-emerald-400");
+                updateShopUI();
+            } else {
+                showFloatingText("Not enough gold!", "text-rose-400");
+            }
+        });
+
+        document.getElementById('buy-handling').addEventListener('click', () => {
+            if (gameState.gold >= gameState.costs.handling) {
+                gameState.gold -= gameState.costs.handling;
+                gameState.stats.handlingLvl++;
+                gameState.physics.steering += 0.3;
+                gameState.costs.handling = Math.floor(gameState.costs.handling * 1.4);
+                audio.playCoin();
+                showFloatingText("Handling Upgraded! 🎯", "text-purple-400");
+                updateShopUI();
+            } else {
+                showFloatingText("Not enough gold!", "text-rose-400");
+            }
+        });
+
+        document.getElementById('buy-tip').addEventListener('click', () => {
+            if (gameState.gold >= gameState.costs.tip) {
+                gameState.gold -= gameState.costs.tip;
+                gameState.stats.tipLvl++;
+                gameState.costs.tip = Math.floor(gameState.costs.tip * 1.6);
+                audio.playCoin();
+                showFloatingText("Tip Bonus Upgraded! 💰", "text-yellow-400");
+                updateShopUI();
+            } else {
+                showFloatingText("Not enough gold!", "text-rose-400");
+            }
+        });
+
+        document.getElementById('buy-light-speed').addEventListener('click', () => {
+            if (gameState.stats.isLightSpeed) return;
+            if (gameState.gold >= gameState.costs.lightSpeed) {
+                gameState.gold -= gameState.costs.lightSpeed;
+                gameState.stats.isLightSpeed = true;
+                gameState.physics.maxSpeed = 75; // 150 km/h hyperdrive
+                gameState.physics.accel = 30;
+                neonStrips.forEach(strip => strip.visible = true);
+                audio.playWarp();
+                showFloatingText("ULTIMATE BECAK UNLOCKED! 🌌⚡", "text-cyan-300 text-xl font-black");
+                updateShopUI();
+            } else {
+                showFloatingText("Not enough gold!", "text-rose-400");
+            }
+        });
+
+        // Update Garage Shop UI values & driver stats
+        function updateShopUI() {
+            document.getElementById('gold-display').innerText = gameState.gold;
+            document.getElementById('driver-level').innerText = gameState.level;
+            document.getElementById('driver-title').innerText = gameState.title;
+            document.getElementById('current-exp').innerText = gameState.exp;
+            document.getElementById('max-exp').innerText = gameState.maxExp;
+
+            const expPct = Math.min(100, (gameState.exp / gameState.maxExp) * 100);
+            document.getElementById('exp-bar').style.width = `${expPct}%`;
+
+            document.getElementById('speed-lvl-text').innerText = `Level ${gameState.stats.topSpeedLvl} (${gameState.physics.maxSpeed} km/h)`;
+            document.getElementById('speed-cost').innerText = gameState.costs.speed;
+
+            document.getElementById('accel-lvl-text').innerText = `Level ${gameState.stats.accelLvl}`;
+            document.getElementById('accel-cost').innerText = gameState.costs.accel;
+
+            document.getElementById('handling-lvl-text').innerText = `Level ${gameState.stats.handlingLvl}`;
+            document.getElementById('handling-cost').innerText = gameState.costs.handling;
+
+            const bonusPct = (gameState.stats.tipLvl - 1) * 20;
+            document.getElementById('tip-lvl-text').innerText = `Level ${gameState.stats.tipLvl} (+${bonusPct}% Bonus)`;
+            document.getElementById('tip-cost').innerText = gameState.costs.tip;
+
+            if (gameState.stats.isLightSpeed) {
+                const buyBtn = document.getElementById('buy-light-speed');
+                if (buyBtn) {
+                    buyBtn.innerText = "UNLOCKED!";
+                    buyBtn.disabled = true;
+                    buyBtn.classList.add('opacity-60', 'cursor-not-allowed');
+                }
+                document.getElementById('becak-model-label').innerText = "Becak Laju Cahaya";
+                const modeBadge = document.getElementById('mode-badge');
+                if (modeBadge) {
+                    modeBadge.innerText = "Light Speed Hyperdrive";
+                    modeBadge.className = "text-[11px] text-cyan-400 font-bold animate-pulse";
+                }
+            }
+        }
+
+        function addExp(amount) {
+            gameState.exp += amount;
+            if (gameState.exp >= gameState.maxExp) {
+                gameState.exp -= gameState.maxExp;
+                gameState.level++;
+                gameState.maxExp = Math.floor(gameState.maxExp * 1.4);
+                const titleIdx = Math.min(gameState.level - 1, TITLES.length - 1);
+                gameState.title = TITLES[titleIdx];
+                audio.playLevelUp();
+                showFloatingText(`LEVEL UP! LVL ${gameState.level} 🎉`, "text-amber-400 font-black text-2xl");
+            }
+            updateShopUI();
+        }
+
+        function showFloatingText(msg, styleClasses = "text-white") {
+            const container = document.getElementById('notification-container');
+            const el = document.createElement('div');
+            el.className = `glass-card px-5 py-2.5 rounded-2xl shadow-2xl border border-amber-400/30 text-sm font-bold float-text ${styleClasses}`;
+            el.innerText = msg;
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 1500);
+        }
+
+        // ==========================================
+        // 8. MAP & MINIMAP RENDERERS
+        // ==========================================
+        const minimapCanvas = document.getElementById('minimap');
+        const minimapCtx = minimapCanvas.getContext('2d');
+
+        function drawMinimap() {
+            const w = minimapCanvas.width;
+            const h = minimapCanvas.height;
+            minimapCtx.clearRect(0, 0, w, h);
+
+            minimapCtx.fillStyle = '#0f172a';
+            minimapCtx.fillRect(0, 0, w, h);
+
+            const cx = w / 2;
+            const cy = h / 2;
+
+            if (gameState.mission.active) {
+                const relX = (gameState.mission.targetPos.x - becakGroup.position.x) * 0.4;
+                const relZ = (gameState.mission.targetPos.z - becakGroup.position.z) * 0.4;
+                
+                const maxDist = w / 2 - 8;
+                const dist = Math.hypot(relX, relZ);
+                let drawX = relX;
+                let drawZ = relZ;
+                if (dist > maxDist) {
+                    drawX = (relX / dist) * maxDist;
+                    drawZ = (relZ / dist) * maxDist;
+                }
+
+                minimapCtx.fillStyle = gameState.mission.type === 'PICKUP' ? '#facc15' : '#06b6d4';
+                minimapCtx.beginPath();
+                minimapCtx.arc(cx + drawX, cy + drawZ, 4, 0, Math.PI * 2);
+                minimapCtx.fill();
+            }
+
+            // Draw Player Arrow
+            minimapCtx.save();
+            minimapCtx.translate(cx, cy);
+            minimapCtx.rotate(-becakGroup.rotation.y);
+            minimapCtx.fillStyle = gameState.stats.isLightSpeed ? '#22d3ee' : '#f59e0b';
+            minimapCtx.beginPath();
+            minimapCtx.moveTo(0, -6);
+            minimapCtx.lineTo(-4, 5);
+            minimapCtx.lineTo(4, 5);
+            minimapCtx.closePath();
+            minimapCtx.fill();
+            minimapCtx.restore();
+        }
+
+        function drawFullMap() {
+            const w = fullMapCanvas.width;
+            const h = fullMapCanvas.height;
+            fullMapCtx.clearRect(0, 0, w, h);
+
+            const mapScale = w / CITY_SIZE;
+            const centerX = w / 2;
+            const centerY = h / 2;
+
+            fullMapCtx.fillStyle = '#0f172a';
+            fullMapCtx.fillRect(0, 0, w, h);
+
+            fullMapCtx.strokeStyle = '#334155';
+            fullMapCtx.lineWidth = ROAD_WIDTH * mapScale;
+            
+            const roadCoords = [-81, -27, 27, 81];
+            roadCoords.forEach(coord => {
+                const px = centerX + coord * mapScale;
+                const py = centerY + coord * mapScale;
+
+                fullMapCtx.beginPath();
+                fullMapCtx.moveTo(px, 0);
+                fullMapCtx.lineTo(px, h);
+                fullMapCtx.stroke();
+
+                fullMapCtx.beginPath();
+                fullMapCtx.moveTo(0, py);
+                fullMapCtx.lineTo(w, py);
+                fullMapCtx.stroke();
+            });
+
+            fullMapCtx.fillStyle = '#1e293b';
+            fullMapCtx.strokeStyle = '#475569';
+            fullMapCtx.lineWidth = 1.5;
+
+            buildings.forEach(box => {
+                const minX = centerX + box.min.x * mapScale;
+                const minZ = centerY + box.min.z * mapScale;
+                const width = (box.max.x - box.min.x) * mapScale;
+                const depth = (box.max.z - box.min.z) * mapScale;
+
+                fullMapCtx.fillRect(minX, minZ, width, depth);
+                fullMapCtx.strokeRect(minX, minZ, width, depth);
+            });
+
+            if (gameState.mission.active) {
+                if (gameState.mission.type === 'PICKUP' || pickupZoneGroup.visible) {
+                    const pkX = centerX + gameState.mission.pickupPos.x * mapScale;
+                    const pkZ = centerY + gameState.mission.pickupPos.z * mapScale;
+
+                    fullMapCtx.fillStyle = '#10b981';
+                    fullMapCtx.beginPath();
+                    fullMapCtx.arc(pkX, pkZ, 7, 0, Math.PI * 2);
+                    fullMapCtx.fill();
+
+                    fullMapCtx.strokeStyle = '#34d399';
+                    fullMapCtx.lineWidth = 2;
+                    fullMapCtx.beginPath();
+                    fullMapCtx.arc(pkX, pkZ, 12, 0, Math.PI * 2);
+                    fullMapCtx.stroke();
+
+                    fullMapCtx.fillStyle = '#10b981';
+                    fullMapCtx.font = 'bold 10px sans-serif';
+                    fullMapCtx.fillText('PICKUP', pkX - 18, pkZ - 15);
+                }
+
+                if (gameState.mission.type === 'DROPOFF' || dropoffZoneGroup.visible) {
+                    const dpX = centerX + gameState.mission.dropoffPos.x * mapScale;
+                    const dpZ = centerY + gameState.mission.dropoffPos.z * mapScale;
+
+                    fullMapCtx.fillStyle = '#e11d48';
+                    fullMapCtx.beginPath();
+                    fullMapCtx.arc(dpX, dpZ, 7, 0, Math.PI * 2);
+                    fullMapCtx.fill();
+
+                    fullMapCtx.strokeStyle = '#f43f5e';
+                    fullMapCtx.lineWidth = 2;
+                    fullMapCtx.beginPath();
+                    fullMapCtx.arc(dpX, dpZ, 12, 0, Math.PI * 2);
+                    fullMapCtx.stroke();
+
+                    fullMapCtx.fillStyle = '#f43f5e';
+                    fullMapCtx.font = 'bold 10px sans-serif';
+                    fullMapCtx.fillText('DESTINATION', dpX - 30, dpZ - 15);
+                }
+            }
+
+            const bx = centerX + becakGroup.position.x * mapScale;
+            const bz = centerY + becakGroup.position.z * mapScale;
+
+            fullMapCtx.save();
+            fullMapCtx.translate(bx, bz);
+            fullMapCtx.rotate(-becakGroup.rotation.y);
+
+            fullMapCtx.fillStyle = 'rgba(245, 158, 11, 0.3)';
+            fullMapCtx.beginPath();
+            fullMapCtx.arc(0, 0, 10, 0, Math.PI * 2);
+            fullMapCtx.fill();
+
+            fullMapCtx.fillStyle = gameState.stats.isLightSpeed ? '#22d3ee' : '#f59e0b';
+            fullMapCtx.beginPath();
+            fullMapCtx.moveTo(0, -9);
+            fullMapCtx.lineTo(-6, 7);
+            fullMapCtx.lineTo(6, 7);
+            fullMapCtx.closePath();
+            fullMapCtx.fill();
+            fullMapCtx.restore();
+        }
+
+        // ==========================================
+        // 9. MAIN GAME LOOP & PHYSICS UPDATE
+        // ==========================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const p = gameState.physics;
+
+            const isAccelerating = keys.W || touchInput.accel;
+            const isReversing = keys.S || touchInput.reverse;
+            const isBraking = keys.Space || touchInput.brake;
+            const isTurningLeft = keys.A || touchInput.left;
+            const isTurningRight = keys.D || touchInput.right;
+            const isNitroRequested = keys.Shift || touchInput.nitro;
+
+            // Nitro Boost logic
+            let activeMaxSpeed = p.maxSpeed;
+            let activeAccel = p.accel;
+
+            if (isNitroRequested && gameState.nitro.amount > 0 && (isAccelerating || Math.abs(p.speed) > 1)) {
+                gameState.nitro.isBoosting = true;
+                gameState.nitro.amount -= gameState.nitro.consumeRate * delta;
+                if (gameState.nitro.amount < 0) gameState.nitro.amount = 0;
+
+                activeMaxSpeed *= gameState.nitro.multiplier;
+                activeAccel *= 2.2;
+
+                spawnNitroParticle();
+                if (Math.random() < 0.2) audio.playNitro();
+            } else {
+                gameState.nitro.isBoosting = false;
+                if (gameState.nitro.amount < gameState.nitro.maxAmount) {
+                    gameState.nitro.amount += gameState.nitro.rechargeRate * delta;
+                    if (gameState.nitro.amount > gameState.nitro.maxAmount) gameState.nitro.amount = gameState.nitro.maxAmount;
+                }
+            }
+
+            // Update Nitro UI
+            const nitroPct = (gameState.nitro.amount / gameState.nitro.maxAmount) * 100;
+            const nitroBar = document.getElementById('nitro-bar');
+            const nitroText = document.getElementById('nitro-text');
+            if (nitroBar && nitroText) {
+                nitroBar.style.width = `${nitroPct}%`;
+                nitroText.innerText = `${Math.round(nitroPct)}%`;
+                if (gameState.nitro.isBoosting) {
+                    nitroBar.className = "bg-gradient-to-r from-red-500 via-orange-400 to-yellow-300 h-full w-full transition-all duration-75 animate-pulse";
+                } else {
+                    nitroBar.className = "bg-gradient-to-r from-orange-500 to-amber-300 h-full w-full transition-all duration-75";
+                }
+            }
+
+            if (isAccelerating) {
+                p.speed += activeAccel * delta;
+                if (p.speed > activeMaxSpeed) p.speed = activeMaxSpeed;
+            } else if (isReversing) {
+                p.speed -= p.accel * 0.6 * delta;
+                if (p.speed < p.reverseMax) p.speed = p.reverseMax;
+            } else {
+                if (p.speed > 0) {
+                    p.speed -= p.decel * delta;
+                    if (p.speed < 0) p.speed = 0;
+                } else if (p.speed < 0) {
+                    p.speed += p.decel * delta;
+                    if (p.speed > 0) p.speed = 0;
+                }
+            }
+
+            if (isBraking) {
+                p.speed *= 0.9;
+            }
+
+            if (Math.abs(p.speed) > 0.1) {
+                const turnDirection = p.speed > 0 ? 1 : -1;
+                if (isTurningLeft) {
+                    becakGroup.rotation.y += p.steering * turnDirection * delta;
+                }
+                if (isTurningRight) {
+                    becakGroup.rotation.y -= p.steering * turnDirection * delta;
+                }
+            }
+
+            const moveDistance = p.speed * delta;
+            const moveVector = new THREE.Vector3(0, 0, moveDistance);
+            moveVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), becakGroup.rotation.y);
+
+            const currentPos = becakGroup.position.clone();
+            
+            // Test X movement
+            const testPosX = currentPos.clone().add(new THREE.Vector3(moveVector.x, 0, 0));
+            const playerBoxX = new THREE.Box3().setFromCenterAndSize(testPosX, new THREE.Vector3(1.6, 2, 1.6));
+            
+            let collideX = false;
+            for (let i = 0; i < buildings.length; i++) {
+                if (playerBoxX.intersectsBox(buildings[i])) {
+                    collideX = true;
+                    break;
+                }
+            }
+            if (!collideX) {
+                for (let bound of boundaries) {
+                    if (bound.intersectsBox(playerBoxX)) {
+                        collideX = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!collideX) {
+                becakGroup.position.x = testPosX.x;
+            } else {
+                p.speed *= 0.7;
+            }
+
+            // Test Z movement
+            const testPosZ = becakGroup.position.clone().add(new THREE.Vector3(0, 0, moveVector.z));
+            const playerBoxZ = new THREE.Box3().setFromCenterAndSize(testPosZ, new THREE.Vector3(1.6, 2, 1.6));
+            
+            let collideZ = false;
+            for (let i = 0; i < buildings.length; i++) {
+                if (playerBoxZ.intersectsBox(buildings[i])) {
+                    collideZ = true;
+                    break;
+                }
+            }
+            if (!collideZ) {
+                for (let bound of boundaries) {
+                    if (bound.intersectsBox(playerBoxZ)) {
+                        collideZ = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!collideZ) {
+                becakGroup.position.z = testPosZ.z;
+            } else {
+                p.speed *= 0.7;
+            }
+
+            // Wheel Spin & Animation
+            const spinRate = p.speed * delta * 2.5;
+            wheelFL.rotation.x += spinRate;
+            wheelFR.rotation.x += spinRate;
+            wheelRear.rotation.x += spinRate;
+
+            driverMesh.position.y = Math.sin(Date.now() * 0.01) * 0.03 * (p.speed / p.maxSpeed);
+
+            spawnWarpParticle();
+            for (let i = trailParticles.length - 1; i >= 0; i--) {
+                const pt = trailParticles[i];
+                pt.life -= delta * 2.5;
+                pt.mesh.scale.multiplyScalar(0.92);
+                if (pt.life <= 0) {
+                    scene.remove(pt.mesh);
+                    trailParticles.splice(i, 1);
+                }
+            }
+
+            for (let i = nitroParticles.length - 1; i >= 0; i--) {
+                const pt = nitroParticles[i];
+                pt.life -= delta * 3.5;
+                pt.mesh.position.addScaledVector(pt.vel, delta);
+                pt.mesh.scale.multiplyScalar(0.88);
+                if (pt.life <= 0) {
+                    scene.remove(pt.mesh);
+                    nitroParticles.splice(i, 1);
+                }
+            }
+
+            beaconMesh.rotation.y += delta * 2;
+            dropBeaconMesh.rotation.y += delta * 2;
+            pickupMesh.rotation.z += delta;
+            dropMesh.rotation.z += delta;
+
+            // Mission Logic & Timers
+            if (gameState.mission.active) {
+                gameState.mission.timer -= delta;
+                
+                const currentTimer = Math.max(0, Math.ceil(gameState.mission.timer));
+                document.getElementById('timer-display').innerText = `00:${currentTimer.toString().padStart(2, '0')}`;
+                
+                const timerPercent = (gameState.mission.timer / gameState.mission.maxTimer) * 100;
+                const timerBar = document.getElementById('timer-bar');
+                timerBar.style.width = `${Math.max(0, timerPercent)}%`;
+
+                if (timerPercent < 30) {
+                    timerBar.className = "bg-rose-500 h-full w-full transition-all duration-200 animate-pulse";
+                } else {
+                    timerBar.className = "bg-emerald-400 h-full w-full transition-all duration-200";
+                }
+
+                const distToTarget = becakGroup.position.distanceTo(gameState.mission.targetPos);
+                document.getElementById('nav-distance').innerText = `${Math.round(distToTarget)} m`;
+
+                const targetDir = gameState.mission.targetPos.clone().sub(becakGroup.position).normalize();
+                const forwardDir = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), becakGroup.rotation.y);
+                const angle = Math.atan2(targetDir.x, targetDir.z) - Math.atan2(forwardDir.x, forwardDir.z);
+                document.getElementById('compass-arrow').style.transform = `rotate(${angle}rad)`;
+
+                if (gameState.mission.type === 'PICKUP' && distToTarget < 3.5) {
+                    gameState.mission.type = 'DROPOFF';
+                    gameState.mission.targetPos.copy(gameState.mission.dropoffPos);
+
+                    pickupZoneGroup.visible = false;
+                    dropoffZoneGroup.visible = true;
+                    passengerMesh.visible = true;
+
+                    audio.playBell();
+                    showFloatingText("Customer On Board! 🛺", "text-emerald-400");
+                    document.getElementById('nav-status-label').innerText = "DESTINATION";
+                    document.getElementById('mission-status-text').innerText = "ESCORT TO DESTINATION";
+                    document.getElementById('mission-status-text').className = "text-[10px] font-black tracking-widest text-fuchsia-400 uppercase";
+                }
+                else if (gameState.mission.type === 'DROPOFF' && distToTarget < 3.5) {
+                    const tipMultiplier = 1 + (gameState.stats.tipLvl - 1) * 0.2;
+                    const finalReward = Math.floor(gameState.mission.reward * tipMultiplier);
+                    const expEarned = 35;
+
+                    gameState.gold += finalReward;
+                    gameState.nitro.amount = gameState.nitro.maxAmount; // Refill Nitro tank
+                    addExp(expEarned);
+                    audio.playCoin();
+
+                    showFloatingText(`+$${finalReward} Gold! Nitro Refilled 🔥`, "text-yellow-300 font-extrabold text-xl");
+                    startNewMission();
+                }
+                else if (gameState.mission.timer <= 0) {
+                    audio.playFail();
+                    showFloatingText("Time's Up! Customer Left 😞", "text-rose-400");
+                    startNewMission();
+                }
+            }
+
+            const speedKmh = Math.abs(Math.round(p.speed));
+            document.getElementById('speed-text').innerText = speedKmh;
+
+            const camOffset = new THREE.Vector3(0, 4.2, -8.5);
+            if (gameState.stats.isLightSpeed && speedKmh > 50) {
+                camOffset.set(0, 5.2, -10.5);
+                camera.fov = THREE.MathUtils.lerp(camera.fov, 75, 0.05);
+            } else {
+                camera.fov = THREE.MathUtils.lerp(camera.fov, 60, 0.05);
+            }
+            camera.updateProjectionMatrix();
+
+            camOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), becakGroup.rotation.y);
+            const targetCamPos = becakGroup.position.clone().add(camOffset);
+            camera.position.lerp(targetCamPos, 0.1);
+
+            const lookAtPos = becakGroup.position.clone().add(new THREE.Vector3(0, 1.3, 0));
+            camera.lookAt(lookAtPos);
+
+            drawMinimap();
+            if (isMapOpen) drawFullMap();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        updateShopUI();
+        animate();
+
+    </script>
+</body>
+</html>
